@@ -16,18 +16,18 @@ interface HomePageProps {
   onLogout: () => void;
   onSaveFlashcards: (title: string, questions: Array<{ question: string; answer: string }>) => void;
   savedFlashcards: FlashcardSet[];
-  onStartExam?: (questions: MultipleChoiceQuestion[], answers: Map<string, string>, onResultsReady: (answers: Map<string, string>) => void) => void;
+  onStartExam: (questions: MultipleChoiceQuestion[]) => void;
 }
 
 export function HomePage({ navigateTo, user, onLogout, onSaveFlashcards, savedFlashcards, onStartExam }: HomePageProps) {
   const [notes, setNotes] = useState('');
   const [generatedQuestions, setGeneratedQuestions] = useState<Array<{ question: string; answer: string }>>([]);
-  const [examQuestions, setExamQuestions] = useState<MultipleChoiceQuestion[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [showExamSettings, setShowExamSettings] = useState(false);
   const [flashcardTitle, setFlashcardTitle] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [numGeneratedQuestions, setNumGeneratedQuestions] = useState(0);
 
   const generateQuiz = async () => {
     if (!notes.trim()) return;
@@ -39,6 +39,7 @@ export function HomePage({ navigateTo, user, onLogout, onSaveFlashcards, savedFl
         toast.error('Could not generate questions. Please provide more detailed notes.');
       } else {
         setGeneratedQuestions(questions);
+        setNumGeneratedQuestions(questions.length);
         toast.success(`Generated ${questions.length} quiz questions!`);
       }
     } catch (error) {
@@ -64,6 +65,7 @@ export function HomePage({ navigateTo, user, onLogout, onSaveFlashcards, savedFl
         toast.error('Could not extract content from PDF. Please ensure it contains readable text.');
       } else {
         setGeneratedQuestions(questions);
+        setNumGeneratedQuestions(questions.length);
         setNotes(`Extracted from: ${file.name}`);
         toast.success(`Generated ${questions.length} quiz questions from PDF!`);
       }
@@ -102,8 +104,7 @@ export function HomePage({ navigateTo, user, onLogout, onSaveFlashcards, savedFl
       if (questions.length === 0) {
         toast.error('Could not generate exam questions. Please provide more detailed notes.');
       } else {
-        setExamQuestions(questions);
-        navigateTo('exam');
+        onStartExam(questions);
         setShowExamSettings(false);
       }
     } catch (error) {
@@ -254,6 +255,15 @@ export function HomePage({ navigateTo, user, onLogout, onSaveFlashcards, savedFl
               </CardContent>
             </Card>
           </div>
+        )}
+
+        {/* Exam Settings Dialog */}
+        {showExamSettings && (
+          <ExamSettingsDialog
+            maxQuestions={numGeneratedQuestions}
+            onStart={handleStartExam}
+            onCancel={() => setShowExamSettings(false)}
+          />
         )}
 
         {/* Recently Saved Flashcards */}

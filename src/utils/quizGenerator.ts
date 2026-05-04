@@ -137,60 +137,91 @@ export async function generateQuizFromNotes(notes: string): Promise<GeneratedQue
 export async function extractTextFromPDF(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    
+
     reader.onload = async (e) => {
       try {
         const arrayBuffer = e.target?.result as ArrayBuffer;
-        
-        // Simple PDF text extraction using basic parsing
-        // For production, use a library like pdf-parse or pdfjs-dist
+
+        // Extract text using simple byte-by-byte parsing
         const text = extractPDFText(arrayBuffer);
         resolve(text);
       } catch (error) {
+        console.error('PDF extraction error:', error);
         reject(new Error('Failed to extract text from PDF'));
       }
     };
-    
+
     reader.onerror = () => {
       reject(new Error('Failed to read PDF file'));
     };
-    
+
     reader.readAsArrayBuffer(file);
   });
 }
 
 /**
- * Basic PDF text extraction using ArrayBuffer parsing
- * Note: This is a simplified implementation. For production use pdf.js or similar
+ * Simple PDF text extraction - extracts all readable ASCII text
+ * Works with text-based PDFs; scanned PDFs won't work without OCR
  */
 function extractPDFText(arrayBuffer: ArrayBuffer): string {
   try {
-    // Convert ArrayBuffer to string
     const uint8Array = new Uint8Array(arrayBuffer);
     let text = '';
-    
-    // Attempt basic text extraction by looking for readable text streams
+
+    // Extract all printable ASCII characters from the PDF
     for (let i = 0; i < uint8Array.length; i++) {
       const byte = uint8Array[i];
-      
-      // Extract ASCII printable characters
-      if ((byte >= 32 && byte <= 126) || byte === 10 || byte === 13) {
-        text += String.fromCharCode(byte);
+
+      // Keep printable ASCII characters and whitespace
+      if ((byte >= 32 && byte <= 126) || byte === 10 || byte === 13 || byte === 9) {
+        if (byte === 10 || byte === 13) {
+          // Normalize line breaks
+          if (!text.endsWith('\n')) {
+            text += '\n';
+          }
+        } else if (byte === 9) {
+          text += ' ';
+        } else {
+          text += String.fromCharCode(byte);
+        }
       }
     }
-    
-    // Clean up extracted text
+
+    // Clean up the text
     text = text
-      .replace(/[^\w\s.!?,()\-:;'"]/g, ' ') // Remove special characters
-      .replace(/\s+/g, ' ') // Normalize spaces
+      // Remove multiple spaces
+      .replace(/[ \t]+/g, ' ')
+      // Remove multiple line breaks
+      .replace(/\n\n+/g, '\n')
+      // Remove PDF metadata and objects
+      .split('\n')
+      .filter(line => {
+        // Filter out PDF technical lines
+        const trimmed = line.trim();
+        if (trimmed.length === 0) return false;
+        if (trimmed.startsWith('%%')) return false; // PDF comments
+        if (trimmed.startsWith('/')) return false; // PDF dictionary entries
+        if (trimmed.match(/^\d+\s+\d+\s+obj/)) return false; // Object declarations
+        if (trimmed === 'stream' || trimmed === 'endstream' || trimmed === 'endobj') return false;
+        return true;
+      })
+      .map(line => line.trim())
+      .join(' ')
       .trim();
-    
-    if (text.length < 50) {
-      throw new Error('Insufficient text extracted from PDF');
+
+    // Final cleanup: remove leftover special chars but keep basic punctuation
+    text = text
+      .replace(/[^\w\s.!?:;,\-()'"]/g, ' ')
+      .replace(/[ ]+/g, ' ')
+      .trim();
+
+    if (text.length < 20) {
+      throw new Error('Insufficient text extracted');
     }
-    
+
     return text;
   } catch (error) {
+    console.error('PDF text extraction failed:', error);
     throw new Error('Could not extract text from PDF. Please ensure the PDF contains readable text.');
   }
 }

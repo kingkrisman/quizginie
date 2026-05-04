@@ -44,34 +44,74 @@ export function ExamResultsPage({
   const correctResults = results.filter(r => r.isCorrect);
   const incorrectResults = results.filter(r => !r.isCorrect);
 
-  // Generate suggestions
-  const generateSuggestions = (): string[] => {
-    const suggestions: string[] = [];
+  // Generate detailed suggestions based on performance
+  const generateSuggestions = (): Array<{ title: string; description: string; priority: 'high' | 'medium' | 'low' }> => {
+    const suggestions: Array<{ title: string; description: string; priority: 'high' | 'medium' | 'low' }> = [];
 
     if (scorePercentage >= 90) {
-      suggestions.push('Excellent performance! Try harder difficulty levels to challenge yourself.');
-    } else if (scorePercentage >= 70) {
-      suggestions.push('Good job! Review the areas where you struggled for better understanding.');
+      suggestions.push({
+        title: 'Outstanding Performance!',
+        description: 'You\'ve mastered this material. Try harder difficulty levels to challenge yourself further.',
+        priority: 'low'
+      });
+    } else if (scorePercentage >= 75) {
+      suggestions.push({
+        title: 'Good Understanding',
+        description: 'You\'ve grasped most concepts. Focus on the questions you missed to strengthen weak areas.',
+        priority: 'medium'
+      });
     } else if (scorePercentage >= 50) {
-      suggestions.push('Keep practicing! Consider reviewing the material more thoroughly before retaking.');
+      suggestions.push({
+        title: 'Keep Practicing',
+        description: 'You\'re on the right track. Review the material more thoroughly and take another practice exam.',
+        priority: 'high'
+      });
     } else {
-      suggestions.push('You may want to review the entire material before retaking this exam.');
+      suggestions.push({
+        title: 'Foundation Review Needed',
+        description: 'It\'s important to review the core concepts thoroughly before retaking this exam.',
+        priority: 'high'
+      });
     }
 
     if (incorrectResults.length > 0) {
       const wrongDifficulties = incorrectResults.map(r => r.question.difficulty);
       const easyWrong = wrongDifficulties.filter(d => d === 'easy').length;
+      const mediumWrong = wrongDifficulties.filter(d => d === 'medium').length;
       const hardWrong = wrongDifficulties.filter(d => d === 'hard').length;
 
       if (easyWrong > 0) {
-        suggestions.push(`Focus on strengthening your foundation with basic concepts - you had ${easyWrong} incorrect on easy questions.`);
+        suggestions.push({
+          title: `${easyWrong} Basic Question${easyWrong > 1 ? 's' : ''} Missed`,
+          description: `Strengthen your foundation by reviewing the definitions and basic concepts you got wrong. Mastering basics makes harder questions easier.`,
+          priority: 'high'
+        });
       }
       if (hardWrong > 0) {
-        suggestions.push(`Practice applying concepts to complex scenarios - higher difficulty questions require deeper understanding.`);
+        suggestions.push({
+          title: `Advanced Topic Analysis`,
+          description: `You struggled with complex questions. Practice applying concepts to real-world scenarios and understand how different concepts interconnect.`,
+          priority: 'medium'
+        });
+      }
+      if (mediumWrong > 0) {
+        suggestions.push({
+          title: `Concept Integration`,
+          description: `Review how ${mediumWrong} concept${mediumWrong > 1 ? 's' : ''} relate to each other. Many medium-level questions test understanding of relationships between ideas.`,
+          priority: 'medium'
+        });
       }
     }
 
-    return suggestions.slice(0, 3);
+    // Study timing suggestion
+    const hoursUntilNextReview = 24;
+    suggestions.push({
+      title: 'Next Review Session',
+      description: `Review this material again in ${hoursUntilNextReview} hours to reinforce learning. Spaced repetition helps with long-term retention.`,
+      priority: 'low'
+    });
+
+    return suggestions.slice(0, 4);
   };
 
   const getScoreColor = (): string => {
@@ -155,18 +195,27 @@ export function ExamResultsPage({
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
                 <AlertCircle className="w-5 h-5 text-quiz-blue" />
-                Suggestions for Improvement
+                Personalized Recommendations
               </CardTitle>
             </CardHeader>
-            <CardContent>
-              <ul className="space-y-2">
-                {generateSuggestions().map((suggestion, idx) => (
-                  <li key={idx} className="flex gap-3 text-sm text-foreground">
-                    <span className="text-quiz-blue font-bold">•</span>
-                    {suggestion}
-                  </li>
-                ))}
-              </ul>
+            <CardContent className="space-y-3">
+              {generateSuggestions().map((suggestion, idx) => (
+                <div
+                  key={idx}
+                  className="p-3 rounded-lg border-l-4 bg-white/50 dark:bg-black/20"
+                  style={{
+                    borderColor:
+                      suggestion.priority === 'high'
+                        ? 'rgb(239, 68, 68)'
+                        : suggestion.priority === 'medium'
+                        ? 'var(--color-quiz-blue)'
+                        : 'var(--color-quiz-green)'
+                  }}
+                >
+                  <p className="font-semibold text-sm mb-1 text-foreground">{suggestion.title}</p>
+                  <p className="text-sm text-muted-foreground">{suggestion.description}</p>
+                </div>
+              ))}
             </CardContent>
           </Card>
         )}
