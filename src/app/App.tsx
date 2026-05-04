@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Toaster, toast } from 'sonner';
 import { LandingPage } from './components/LandingPage';
 import { LoginPage } from './components/LoginPage';
 import { RegisterPage } from './components/RegisterPage';
@@ -70,6 +71,22 @@ export default function App() {
       questions
     };
     setSavedFlashcards(prev => [newSet, ...prev]);
+    toast.success(`"${title}" saved successfully!`);
+  };
+
+  const deleteFlashcardSet = (id: number) => {
+    const set = savedFlashcards.find(s => s.id === id);
+    setSavedFlashcards(prev => prev.filter(s => s.id !== id));
+    if (set) {
+      toast.success(`"${set.title}" deleted`);
+    }
+  };
+
+  const updateFlashcardSet = (id: number, title: string, questions: Array<{ question: string; answer: string }>) => {
+    setSavedFlashcards(prev =>
+      prev.map(s => s.id === id ? { ...s, title, questions } : s)
+    );
+    toast.success('Flashcard set updated!');
   };
 
   const renderPage = () => {
@@ -89,18 +106,22 @@ export default function App() {
           savedFlashcards={savedFlashcards}
         />;
       case 'flashcards':
-        return <MyFlashcardsPage 
-          navigateTo={navigateTo} 
-          user={user} 
+        return <MyFlashcardsPage
+          navigateTo={navigateTo}
+          user={user}
           onLogout={logout}
           flashcardSets={savedFlashcards}
+          onDeleteSet={deleteFlashcardSet}
+          onUpdateSet={updateFlashcardSet}
         />;
       case 'profile':
-        return <ProfilePage 
-          navigateTo={navigateTo} 
-          user={user} 
+        return <ProfilePage
+          navigateTo={navigateTo}
+          user={user}
           onLogout={logout}
           onUpdateUser={setUser}
+          totalSets={savedFlashcards.length}
+          totalQuestions={savedFlashcards.reduce((sum, set) => sum + set.questions.length, 0)}
         />;
       default:
         return <LandingPage navigateTo={navigateTo} />;
@@ -110,6 +131,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-background">
       {renderPage()}
+      <Toaster position="top-right" richColors />
     </div>
   );
 }

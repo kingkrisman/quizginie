@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { toast } from 'sonner';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -12,21 +13,40 @@ interface ProfilePageProps {
   user: User | null;
   onLogout: () => void;
   onUpdateUser: (user: User) => void;
+  totalSets: number;
+  totalQuestions: number;
 }
 
-export function ProfilePage({ navigateTo, user, onLogout, onUpdateUser }: ProfilePageProps) {
+export function ProfilePage({ navigateTo, user, onLogout, onUpdateUser, totalSets, totalQuestions }: ProfilePageProps) {
   const [username, setUsername] = useState(user?.username || '');
   const [email, setEmail] = useState(user?.email || '');
   const [isSaved, setIsSaved] = useState(false);
+  const [errors, setErrors] = useState<{ username?: string; email?: string }>({});
 
   const handleSave = () => {
-    if (user && username.trim()) {
+    const newErrors: typeof errors = {};
+
+    if (!username.trim()) {
+      newErrors.username = 'Username is required';
+    } else if (username.length < 3) {
+      newErrors.username = 'Username must be at least 3 characters';
+    }
+
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      newErrors.email = 'Please enter a valid email';
+    }
+
+    setErrors(newErrors);
+    if (Object.keys(newErrors).length > 0) return;
+
+    if (user) {
       onUpdateUser({
         ...user,
         username: username.trim(),
         email: email.trim()
       });
       setIsSaved(true);
+      toast.success('Profile updated!');
       setTimeout(() => setIsSaved(false), 2000);
     }
   };
@@ -62,9 +82,13 @@ export function ProfilePage({ navigateTo, user, onLogout, onUpdateUser }: Profil
                 id="username"
                 type="text"
                 value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className="bg-input-background"
+                onChange={(e) => {
+                  setUsername(e.target.value);
+                  if (errors.username) setErrors(prev => ({ ...prev, username: undefined }));
+                }}
+                className={`bg-input-background ${errors.username ? 'border-red-500' : ''}`}
               />
+              {errors.username && <p className="text-red-500 text-sm">{errors.username}</p>}
             </div>
 
             <div className="space-y-2">
@@ -73,9 +97,13 @@ export function ProfilePage({ navigateTo, user, onLogout, onUpdateUser }: Profil
                 id="email"
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="bg-input-background"
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (errors.email) setErrors(prev => ({ ...prev, email: undefined }));
+                }}
+                className={`bg-input-background ${errors.email ? 'border-red-500' : ''}`}
               />
+              {errors.email && <p className="text-red-500 text-sm">{errors.email}</p>}
             </div>
 
             <Button 
@@ -109,12 +137,12 @@ export function ProfilePage({ navigateTo, user, onLogout, onUpdateUser }: Profil
           <CardContent>
             <div className="grid grid-cols-2 gap-4">
               <div className="text-center p-4 bg-quiz-green-light rounded-lg">
-                <p className="text-2xl text-quiz-green mb-1">0</p>
-                <p className="text-muted-foreground">Quizzes Generated</p>
+                <p className="text-2xl text-quiz-green mb-1">{totalSets}</p>
+                <p className="text-muted-foreground">Flashcard Sets</p>
               </div>
               <div className="text-center p-4 bg-quiz-blue-light rounded-lg">
-                <p className="text-2xl text-quiz-blue mb-1">0</p>
-                <p className="text-muted-foreground">Total Study Sessions</p>
+                <p className="text-2xl text-quiz-blue mb-1">{totalQuestions}</p>
+                <p className="text-muted-foreground">Total Flashcards</p>
               </div>
             </div>
           </CardContent>

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { toast } from 'sonner';
 import { Button } from './ui/button';
 import { Textarea } from './ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
@@ -60,13 +61,19 @@ export function HomePage({ navigateTo, user, onLogout, onSaveFlashcards, savedFl
   };
 
   const handleSaveFlashcards = () => {
-    if (flashcardTitle.trim() && generatedQuestions.length > 0) {
-      onSaveFlashcards(flashcardTitle, generatedQuestions);
-      setShowSaveDialog(false);
-      setFlashcardTitle('');
-      setGeneratedQuestions([]);
-      setNotes('');
+    if (!flashcardTitle.trim()) {
+      toast.error('Please enter a title for this flashcard set');
+      return;
     }
+    if (generatedQuestions.length === 0) {
+      toast.error('No questions to save');
+      return;
+    }
+    onSaveFlashcards(flashcardTitle, generatedQuestions);
+    setShowSaveDialog(false);
+    setFlashcardTitle('');
+    setGeneratedQuestions([]);
+    setNotes('');
   };
 
   return (
@@ -94,6 +101,7 @@ export function HomePage({ navigateTo, user, onLogout, onSaveFlashcards, savedFl
               onChange={(e) => setNotes(e.target.value)}
               className="min-h-[200px] bg-input-background"
             />
+            {!notes.trim() && <p className="text-sm text-muted-foreground">Enter some notes to generate questions</p>}
             <Button 
               onClick={generateQuiz}
               disabled={!notes.trim() || isGenerating}
