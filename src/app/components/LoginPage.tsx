@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { toast } from 'sonner';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -13,11 +14,29 @@ interface LoginPageProps {
 export function LoginPage({ navigateTo, onLogin }: LoginPageProps) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [errors, setErrors] = useState<{ username?: string; password?: string }>({});
+
+  const validateForm = () => {
+    const newErrors: typeof errors = {};
+    if (!username.trim()) {
+      newErrors.username = 'Username is required';
+    } else if (username.length < 3) {
+      newErrors.username = 'Username must be at least 3 characters';
+    }
+    if (!password) {
+      newErrors.password = 'Password is required';
+    } else if (password.length < 6) {
+      newErrors.password = 'Password must be at least 6 characters';
+    }
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (username.trim()) {
+    if (validateForm()) {
       onLogin(username);
+      toast.success('Login successful!');
     }
   };
 
@@ -38,22 +57,28 @@ export function LoginPage({ navigateTo, onLogin }: LoginPageProps) {
                 id="username"
                 type="text"
                 value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
-                className="bg-input-background"
+                onChange={(e) => {
+                  setUsername(e.target.value);
+                  if (errors.username) setErrors(prev => ({ ...prev, username: undefined }));
+                }}
+                className={`bg-input-background ${errors.username ? 'border-red-500' : ''}`}
               />
+              {errors.username && <p className="text-red-500 text-sm">{errors.username}</p>}
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
               <Input
                 id="password"
                 type="password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                className="bg-input-background"
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (errors.password) setErrors(prev => ({ ...prev, password: undefined }));
+                }}
+                className={`bg-input-background ${errors.password ? 'border-red-500' : ''}`}
               />
+              {errors.password && <p className="text-red-500 text-sm">{errors.password}</p>}
             </div>
 
             <Button 
