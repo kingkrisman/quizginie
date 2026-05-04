@@ -137,53 +137,46 @@ export async function generateQuizFromNotes(notes: string): Promise<GeneratedQue
 export async function extractTextFromPDF(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    
+
     reader.onload = async (e) => {
       try {
         const arrayBuffer = e.target?.result as ArrayBuffer;
-        
-        // Simple PDF text extraction using basic parsing
-        // For production, use a library like pdf-parse or pdfjs-dist
+
+        // Extract text using simple byte-by-byte parsing
         const text = extractPDFText(arrayBuffer);
         resolve(text);
       } catch (error) {
+        console.error('PDF extraction error:', error);
         reject(new Error('Failed to extract text from PDF'));
       }
     };
-    
+
     reader.onerror = () => {
       reject(new Error('Failed to read PDF file'));
     };
-    
+
     reader.readAsArrayBuffer(file);
   });
 }
 
 /**
- * Improved PDF text extraction using ArrayBuffer parsing
- * Handles both text-based and partially scanned PDFs
+ * Simple PDF text extraction - extracts all readable ASCII text
+ * Works with text-based PDFs; scanned PDFs won't work without OCR
  */
 function extractPDFText(arrayBuffer: ArrayBuffer): string {
   try {
     const uint8Array = new Uint8Array(arrayBuffer);
     let text = '';
-    let inTextStream = false;
-    let consecutiveNonText = 0;
 
-    // Strategy: Extract ASCII text between common PDF markers
+    // Extract all printable ASCII characters from the PDF
     for (let i = 0; i < uint8Array.length; i++) {
       const byte = uint8Array[i];
-      const prevByte = i > 0 ? uint8Array[i - 1] : 0;
-      const nextByte = i < uint8Array.length - 1 ? uint8Array[i + 1] : 0;
 
-      // Track if we're likely in a text stream
-      const isReadableChar = (byte >= 32 && byte <= 126) || byte === 10 || byte === 13 || byte === 9;
-      const isPossibleTextMarker = byte >= 33 && byte <= 126 && byte !== 37; // Not %
-
-      if (isReadableChar) {
-        // Add printable ASCII and whitespace
+      // Keep printable ASCII characters and whitespace
+      if ((byte >= 32 && byte <= 126) || byte === 10 || byte === 13 || byte === 9) {
         if (byte === 10 || byte === 13) {
-          if (text && !text.endsWith('\n')) {
+          // Normalize line breaks
+          if (!text.endsWith('\n')) {
             text += '\n';
           }
         } else if (byte === 9) {
@@ -191,86 +184,46 @@ function extractPDFText(arrayBuffer: ArrayBuffer): string {
         } else {
           text += String.fromCharCode(byte);
         }
-        consecutiveNonText = 0;
-        inTextStream = true;
-      } else if (inTextStream && isPossibleTextMarker) {
-        // Potential continuation of text
-        consecutiveNonText = 0;
-      } else {
-        consecutiveNonText++;
-        // Exit text stream after long binary section
-        if (consecutiveNonText > 100) {
-          inTextStream = false;
-        }
       }
     }
 
-    // Clean up extracted text
+    // Clean up the text
     text = text
+      // Remove multiple spaces
+      .replace(/[ \t]+/g, ' ')
+      // Remove multiple line breaks
+      .replace(/\n\n+/g, '\n')
+      // Remove PDF metadata and objects
       .split('\n')
-      .map(line => line.trim().replace(/[^\w\s.!?,()\-:;'"\n]/g, ' ').replace(/\s+/g, ' '))
-      .filter(line => line.length > 0)
-      .join('\n')
+      .filter(line => {
+        // Filter out PDF technical lines
+        const trimmed = line.trim();
+        if (trimmed.length === 0) return false;
+        if (trimmed.startsWith('%%')) return false; // PDF comments
+        if (trimmed.startsWith('/')) return false; // PDF dictionary entries
+        if (trimmed.match(/^\d+\s+\d+\s+obj/)) return false; // Object declarations
+        if (trimmed === 'stream' || trimmed === 'endstream' || trimmed === 'endobj') return false;
+        return true;
+      })
+      .map(line => line.trim())
+      .join(' ')
       .trim();
 
-    // Remove common PDF artifacts and metadata
+    // Final cleanup: remove leftover special chars but keep basic punctuation
     text = text
-      .replace(/%%EOF[\s\S]*/g, '') // Remove EOF markers
-      .replace(/\/Creator[^)]*\)/g, '')
-      .replace(/\/Producer[^)]*\)/g, '')
-      .replace(/\/CreationDate[^)]*\)/g, '')
-      .replace(/obj\n/g, '\n')
-      .replace(/endobj\n/g, '\n')
-      .replace(/stream\n/g, '\n')
-      .replace(/endstream\n/g, '\n')
-      .replace(/\d+\s+\d+\s+obj/g, '') // Object declarations
-      .replace(/BT[\s\S]*?ET/g, '') // Text objects
-      .replace(/\/[A-Z]+\s+/g, '') // PDF operators
+      .replace(/[^\w\s.!?:;,\-()'"]/g, ' ')
+      .replace(/[ ]+/g, ' ')
       .trim();
 
-    // If extraction yielded too little, try alternative method
-    if (text.length < 50) {
-      text = extractPDFTextFallback(uint8Array);
-    }
-
-    if (text.length < 50) {
-      throw new Error('Insufficient text extracted from PDF');
+    if (text.length < 20) {
+      throw new Error('Insufficient text extracted');
     }
 
     return text;
   } catch (error) {
+    console.error('PDF text extraction failed:', error);
     throw new Error('Could not extract text from PDF. Please ensure the PDF contains readable text.');
   }
-}
-
-/**
- * Fallback method for PDF text extraction
- * Simple character-by-character extraction for difficult PDFs
- */
-function extractPDFTextFallback(uint8Array: Uint8Array): string {
-  let text = '';
-  let charCount = 0;
-
-  // Extract any printable ASCII characters
-  for (let i = 0; i < uint8Array.length; i++) {
-    const byte = uint8Array[i];
-    if ((byte >= 32 && byte <= 126) || byte === 10 || byte === 13 || byte === 9) {
-      if (byte === 10 || byte === 13) {
-        if (text && !text.endsWith('\n') && charCount > 10) {
-          text += '\n';
-          charCount = 0;
-        }
-      } else {
-        text += String.fromCharCode(byte);
-        charCount++;
-      }
-    }
-  }
-
-  return text
-    .replace(/\s+/g, ' ')
-    .trim()
-    .substring(0, Math.min(5000, text.length)); // Limit size
 }
 
 /**
