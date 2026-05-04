@@ -46,7 +46,7 @@ export function Flashcard({ question, answer, className = '' }: FlashcardProps) 
         </Card>
       </div>
 
-      <style jsx>{`
+      <style>{`
         .backface-hidden {
           backface-visibility: hidden;
         }
