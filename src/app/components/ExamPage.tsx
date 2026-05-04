@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Navigation } from './Navigation';
 import { Page, User } from '../App';
 import { MultipleChoiceQuestion } from '../../utils/quizGenerator';
-import { ChevronRight, ChevronLeft, CheckCircle, XCircle } from 'lucide-react';
+import { ChevronRight, ChevronLeft, CheckCircle, XCircle, Lightbulb } from 'lucide-react';
 
 interface ExamPageProps {
   questions: MultipleChoiceQuestion[];
@@ -24,6 +24,8 @@ export function ExamPage({
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Map<string, string>>(new Map());
   const [showConfirmSubmit, setShowConfirmSubmit] = useState(false);
+  const [usedHints, setUsedHints] = useState<Set<string>>(new Set());
+  const [showHint, setShowHint] = useState(false);
 
   const currentQuestion = questions[currentQuestionIndex];
   const isAnswered = answers.has(currentQuestion.id);
@@ -32,7 +34,29 @@ export function ExamPage({
 
   const handleSelectAnswer = (option: string) => {
     setAnswers(prev => new Map(prev).set(currentQuestion.id, option));
+    setShowHint(false);
   };
+
+  const generateHint = (): string => {
+    const difficulty = currentQuestion.difficulty;
+
+    if (difficulty === 'easy') {
+      return `Think about the definition: The term "${currentQuestion.correctAnswer}" refers to...`;
+    } else if (difficulty === 'medium') {
+      return `Look for the option that best explains the concept or relationship. Think about how the different parts of the material connect.`;
+    } else {
+      return `This question requires understanding how concepts work together. Consider the relationship and application between different topics.`;
+    }
+  };
+
+  const handleRequestHint = () => {
+    if (!usedHints.has(currentQuestion.id)) {
+      setUsedHints(prev => new Set(prev).add(currentQuestion.id));
+      setShowHint(true);
+    }
+  };
+
+  const hasHintAvailable = !usedHints.has(currentQuestion.id);
 
   const handleNext = () => {
     if (!isLastQuestion) {
@@ -115,7 +139,7 @@ export function ExamPage({
             </div>
           </CardHeader>
 
-          <CardContent>
+          <CardContent className="space-y-4">
             <div className="space-y-3">
               {currentQuestion.options.map((option, idx) => {
                 const isSelected = answers.get(currentQuestion.id) === option;
@@ -158,6 +182,27 @@ export function ExamPage({
                   </button>
                 );
               })}
+            </div>
+
+            {/* Hint Section */}
+            <div className="pt-3 border-t border-border">
+              {showHint && (
+                <div className="p-4 mb-3 bg-yellow-50 dark:bg-yellow-950/30 border-l-4 border-yellow-400 rounded">
+                  <div className="flex gap-2">
+                    <Lightbulb className="w-5 h-5 text-yellow-600 flex-shrink-0" />
+                    <p className="text-sm text-yellow-900 dark:text-yellow-200">{generateHint()}</p>
+                  </div>
+                </div>
+              )}
+              <Button
+                onClick={handleRequestHint}
+                disabled={!hasHintAvailable}
+                variant="outline"
+                className="w-full border-yellow-400 text-yellow-700 hover:bg-yellow-50 dark:text-yellow-400 dark:hover:bg-yellow-950/30"
+              >
+                <Lightbulb className="w-4 h-4 mr-2" />
+                {hasHintAvailable ? 'Get a Hint' : 'Hint Used'}
+              </Button>
             </div>
           </CardContent>
         </Card>

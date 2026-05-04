@@ -5,8 +5,8 @@ import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Navigation } from './Navigation';
-import { Page, User } from '../App';
-import { User as UserIcon, Save, Check } from 'lucide-react';
+import { Page, User, StudyStreak } from '../App';
+import { User as UserIcon, Save, Check, Flame, Award } from 'lucide-react';
 
 interface ProfilePageProps {
   navigateTo: (page: Page) => void;
@@ -15,9 +15,10 @@ interface ProfilePageProps {
   onUpdateUser: (user: User) => void;
   totalSets: number;
   totalQuestions: number;
+  studyStreak: StudyStreak;
 }
 
-export function ProfilePage({ navigateTo, user, onLogout, onUpdateUser, totalSets, totalQuestions }: ProfilePageProps) {
+export function ProfilePage({ navigateTo, user, onLogout, onUpdateUser, totalSets, totalQuestions, studyStreak }: ProfilePageProps) {
   const [username, setUsername] = useState(user?.username || '');
   const [email, setEmail] = useState(user?.email || '');
   const [isSaved, setIsSaved] = useState(false);
@@ -129,20 +130,48 @@ export function ProfilePage({ navigateTo, user, onLogout, onUpdateUser, totalSet
           </CardContent>
         </Card>
 
-        {/* Account Stats */}
-        <Card className="mt-6">
+        {/* Study Streak */}
+        <Card className="mt-6 border-orange-200 dark:border-orange-900">
           <CardHeader>
-            <CardTitle>Account Stats</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Flame className="w-5 h-5 text-orange-500" />
+              Study Streak
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-4">
-              <div className="text-center p-4 bg-quiz-green-light rounded-lg">
-                <p className="text-2xl text-quiz-green mb-1">{totalSets}</p>
-                <p className="text-muted-foreground">Flashcard Sets</p>
+              <div className="text-center p-4 bg-orange-50 dark:bg-orange-950/30 rounded-lg border border-orange-200 dark:border-orange-800">
+                <p className="text-3xl font-bold text-orange-500 mb-1">{studyStreak.currentStreak}</p>
+                <p className="text-sm text-muted-foreground">Current Streak</p>
               </div>
-              <div className="text-center p-4 bg-quiz-blue-light rounded-lg">
-                <p className="text-2xl text-quiz-blue mb-1">{totalQuestions}</p>
-                <p className="text-muted-foreground">Total Flashcards</p>
+              <div className="text-center p-4 bg-orange-50 dark:bg-orange-950/30 rounded-lg border border-orange-200 dark:border-orange-800">
+                <p className="text-3xl font-bold text-orange-600 mb-1">{studyStreak.longestStreak}</p>
+                <p className="text-sm text-muted-foreground">Longest Streak</p>
+              </div>
+            </div>
+            <div className="mt-4 text-center text-sm text-muted-foreground">
+              {studyStreak.totalDaysStudied} days of studying completed
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Account Stats */}
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Award className="w-5 h-5 text-quiz-blue" />
+              Account Stats
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="text-center p-4 bg-quiz-green/10 rounded-lg border border-quiz-green/20">
+                <p className="text-2xl font-bold text-quiz-green mb-1">{totalSets}</p>
+                <p className="text-sm text-muted-foreground">Flashcard Sets</p>
+              </div>
+              <div className="text-center p-4 bg-quiz-blue/10 rounded-lg border border-quiz-blue/20">
+                <p className="text-2xl font-bold text-quiz-blue mb-1">{totalQuestions}</p>
+                <p className="text-sm text-muted-foreground">Total Flashcards</p>
               </div>
             </div>
           </CardContent>

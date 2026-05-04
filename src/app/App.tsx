@@ -6,8 +6,11 @@ import { RegisterPage } from './components/RegisterPage';
 import { HomePage } from './components/HomePage';
 import { MyFlashcardsPage } from './components/MyFlashcardsPage';
 import { ProfilePage } from './components/ProfilePage';
+import { ExamPage } from './components/ExamPage';
+import { ExamResultsPage } from './components/ExamResultsPage';
+import { MultipleChoiceQuestion } from '../utils/quizGenerator';
 
-export type Page = 'landing' | 'login' | 'register' | 'home' | 'flashcards' | 'profile';
+export type Page = 'landing' | 'login' | 'register' | 'home' | 'flashcards' | 'profile' | 'exam' | 'results';
 
 export interface User {
   id: number;
@@ -23,11 +26,35 @@ export interface FlashcardSet {
     question: string;
     answer: string;
   }>;
+  lastReviewDate?: string;
+  reviewCount?: number;
+  nextReviewDate?: string;
+  topicTags?: string[];
+}
+
+export interface StudyStreak {
+  currentStreak: number;
+  longestStreak: number;
+  lastStudyDate: string;
+  totalDaysStudied: number;
+}
+
+export interface ExamState {
+  questions: MultipleChoiceQuestion[];
+  answers: Map<string, string>;
 }
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('landing');
   const [user, setUser] = useState<User | null>(null);
+  const [examState, setExamState] = useState<ExamState>({ questions: [], answers: new Map() });
+  const [examAnswersForResults, setExamAnswersForResults] = useState<Map<string, string>>(new Map());
+  const [studyStreak, setStudyStreak] = useState<StudyStreak>({
+    currentStreak: 0,
+    longestStreak: 0,
+    lastStudyDate: '',
+    totalDaysStudied: 0
+  });
   const [savedFlashcards, setSavedFlashcards] = useState<FlashcardSet[]>([
     {
       id: 1,
@@ -89,6 +116,48 @@ export default function App() {
     toast.success('Flashcard set updated!');
   };
 
+  const startExam = (questions: MultipleChoiceQuestion[]) => {
+    setExamState({ questions, answers: new Map() });
+    setCurrentPage('exam');
+  };
+
+  const showExamResults = (answers: Map<string, string>, questions: MultipleChoiceQuestion[]) => {
+    setExamAnswersForResults(answers);
+    setExamState({ questions, answers });
+    updateStudyStreak();
+    setCurrentPage('results');
+  };
+
+  const updateStudyStreak = () => {
+    const today = new Date().toISOString().split('T')[0];
+    const lastDate = studyStreak.lastStudyDate;
+
+    if (lastDate === today) {
+      // Already studied today
+      return;
+    }
+
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+    let newStreak = studyStreak.currentStreak;
+    if (lastDate === yesterdayStr) {
+      newStreak += 1;
+    } else {
+      newStreak = 1;
+    }
+
+    const longestStreak = Math.max(studyStreak.longestStreak, newStreak);
+
+    setStudyStreak({
+      currentStreak: newStreak,
+      longestStreak,
+      lastStudyDate: today,
+      totalDaysStudied: studyStreak.totalDaysStudied + 1
+    });
+  };
+
   const renderPage = () => {
     switch (currentPage) {
       case 'landing':
@@ -98,12 +167,29 @@ export default function App() {
       case 'register':
         return <RegisterPage navigateTo={navigateTo} onRegister={login} />;
       case 'home':
-        return <HomePage 
-          navigateTo={navigateTo} 
-          user={user} 
+        return <HomePage
+          navigateTo={navigateTo}
+          user={user}
           onLogout={logout}
           onSaveFlashcards={saveFlashcardSet}
           savedFlashcards={savedFlashcards}
+          onStartExam={startExam}
+        />;
+      case 'exam':
+        return <ExamPage
+          questions={examState.questions}
+          navigateTo={navigateTo}
+          user={user}
+          onLogout={logout}
+          onShowResults={showExamResults}
+        />;
+      case 'results':
+        return <ExamResultsPage
+          questions={examState.questions}
+          answers={examAnswersForResults}
+          navigateTo={navigateTo}
+          user={user}
+          onLogout={logout}
         />;
       case 'flashcards':
         return <MyFlashcardsPage
@@ -122,6 +208,7 @@ export default function App() {
           onUpdateUser={setUser}
           totalSets={savedFlashcards.length}
           totalQuestions={savedFlashcards.reduce((sum, set) => sum + set.questions.length, 0)}
+          studyStreak={studyStreak}
         />;
       default:
         return <LandingPage navigateTo={navigateTo} />;
