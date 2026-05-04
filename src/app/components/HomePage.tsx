@@ -5,9 +5,10 @@ import { Textarea } from './ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Navigation } from './Navigation';
 import { Flashcard } from './Flashcard';
+import { ExamSettingsDialog } from './ExamSettingsDialog';
 import { Page, User, FlashcardSet } from '../App';
-import { Sparkles, Save, Calendar, Upload, FileText } from 'lucide-react';
-import { generateQuizFromNotes, generateQuizFromPDF } from '../../utils/quizGenerator';
+import { Sparkles, Save, Calendar, Upload, FileText, BookOpen } from 'lucide-react';
+import { generateQuizFromNotes, generateQuizFromPDF, generateExamQuestions, DifficultyLevel, MultipleChoiceQuestion } from '../../utils/quizGenerator';
 
 interface HomePageProps {
   navigateTo: (page: Page) => void;
@@ -15,13 +16,16 @@ interface HomePageProps {
   onLogout: () => void;
   onSaveFlashcards: (title: string, questions: Array<{ question: string; answer: string }>) => void;
   savedFlashcards: FlashcardSet[];
+  onStartExam?: (questions: MultipleChoiceQuestion[], answers: Map<string, string>, onResultsReady: (answers: Map<string, string>) => void) => void;
 }
 
-export function HomePage({ navigateTo, user, onLogout, onSaveFlashcards, savedFlashcards }: HomePageProps) {
+export function HomePage({ navigateTo, user, onLogout, onSaveFlashcards, savedFlashcards, onStartExam }: HomePageProps) {
   const [notes, setNotes] = useState('');
   const [generatedQuestions, setGeneratedQuestions] = useState<Array<{ question: string; answer: string }>>([]);
+  const [examQuestions, setExamQuestions] = useState<MultipleChoiceQuestion[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [showExamSettings, setShowExamSettings] = useState(false);
   const [flashcardTitle, setFlashcardTitle] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -87,6 +91,26 @@ export function HomePage({ navigateTo, user, onLogout, onSaveFlashcards, savedFl
     setFlashcardTitle('');
     setGeneratedQuestions([]);
     setNotes('');
+  };
+
+  const handleStartExam = async (numQuestions: number, difficulty: DifficultyLevel) => {
+    if (!notes.trim()) return;
+
+    setIsGenerating(true);
+    try {
+      const questions = await generateExamQuestions(notes, numQuestions, difficulty);
+      if (questions.length === 0) {
+        toast.error('Could not generate exam questions. Please provide more detailed notes.');
+      } else {
+        setExamQuestions(questions);
+        navigateTo('exam');
+        setShowExamSettings(false);
+      }
+    } catch (error) {
+      toast.error('Failed to generate exam. Please try again.');
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   return (
@@ -161,15 +185,24 @@ export function HomePage({ navigateTo, user, onLogout, onSaveFlashcards, savedFl
         {/* Generated Flashcards */}
         {generatedQuestions.length > 0 && (
           <Card className="mb-8">
-            <CardHeader className="flex flex-row items-center justify-between">
+            <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-3">
               <CardTitle>Generated Flashcards</CardTitle>
-              <Button
-                onClick={() => setShowSaveDialog(true)}
-                className="bg-quiz-green hover:bg-quiz-green/90 text-white"
-              >
-                <Save className="w-4 h-4 mr-2" />
-                Save to My Flashcards
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => setShowExamSettings(true)}
+                  className="bg-quiz-blue hover:bg-quiz-blue/90 text-white"
+                >
+                  <BookOpen className="w-4 h-4 mr-2" />
+                  Take Exam
+                </Button>
+                <Button
+                  onClick={() => setShowSaveDialog(true)}
+                  className="bg-quiz-green hover:bg-quiz-green/90 text-white"
+                >
+                  <Save className="w-4 h-4 mr-2" />
+                  Save to My Flashcards
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">

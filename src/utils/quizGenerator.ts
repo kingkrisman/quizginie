@@ -3,9 +3,20 @@
  * Analyzes text content and generates meaningful quiz questions
  */
 
+export type DifficultyLevel = 'easy' | 'medium' | 'hard';
+
 export interface GeneratedQuestion {
   question: string;
   answer: string;
+}
+
+export interface MultipleChoiceQuestion {
+  id: string;
+  question: string;
+  options: string[];
+  correctAnswer: string;
+  difficulty: DifficultyLevel;
+  explanation: string;
 }
 
 /**
@@ -190,4 +201,213 @@ function extractPDFText(arrayBuffer: ArrayBuffer): string {
 export async function generateQuizFromPDF(file: File): Promise<GeneratedQuestion[]> {
   const text = await extractTextFromPDF(file);
   return generateQuizFromNotes(text);
+}
+
+/**
+ * Generate multiple-choice exam questions from text
+ */
+export async function generateExamQuestions(
+  notes: string,
+  numQuestions: number = 5,
+  difficulty: DifficultyLevel = 'medium'
+): Promise<MultipleChoiceQuestion[]> {
+  if (!notes.trim()) {
+    return [];
+  }
+
+  await new Promise(resolve => setTimeout(resolve, 1200));
+
+  const cleanText = notes.trim().replace(/\s+/g, ' ');
+  const sentences = cleanText.split(/[.!?]+/).filter(s => s.trim().length > 0);
+  const terms = extractKeyTerms(cleanText);
+
+  const questions: MultipleChoiceQuestion[] = [];
+  const usedSentences = new Set<number>();
+
+  for (let i = 0; i < numQuestions && i < terms.length + sentences.length; i++) {
+    const questionId = `q${i + 1}`;
+
+    // Vary question types based on difficulty
+    let question: MultipleChoiceQuestion | null = null;
+
+    if (difficulty === 'easy') {
+      question = generateEasyQuestion(questionId, terms, sentences, i, usedSentences);
+    } else if (difficulty === 'medium') {
+      question = generateMediumQuestion(questionId, terms, sentences, i, usedSentences);
+    } else {
+      question = generateHardQuestion(questionId, terms, sentences, i, usedSentences);
+    }
+
+    if (question) {
+      questions.push(question);
+    }
+  }
+
+  return questions.slice(0, numQuestions);
+}
+
+/**
+ * Generate easy-level questions (definition-based)
+ */
+function generateEasyQuestion(
+  id: string,
+  terms: Array<{ term: string; context: string }>,
+  sentences: string[],
+  index: number,
+  usedSentences: Set<number>
+): MultipleChoiceQuestion | null {
+  if (index >= terms.length) return null;
+
+  const { term, context } = terms[index];
+  const distractors = generateDistractors(term, 3, 'easy');
+
+  return {
+    id,
+    question: `What is ${term}?`,
+    options: shuffleArray([term, ...distractors]),
+    correctAnswer: term,
+    difficulty: 'easy',
+    explanation: context
+  };
+}
+
+/**
+ * Generate medium-level questions (concept understanding)
+ */
+function generateMediumQuestion(
+  id: string,
+  terms: Array<{ term: string; context: string }>,
+  sentences: string[],
+  index: number,
+  usedSentences: Set<number>
+): MultipleChoiceQuestion | null {
+  if (sentences.length === 0) return null;
+
+  let sentenceIndex = Math.floor(Math.random() * sentences.length);
+  while (usedSentences.has(sentenceIndex) && usedSentences.size < sentences.length) {
+    sentenceIndex = Math.floor(Math.random() * sentences.length);
+  }
+  usedSentences.add(sentenceIndex);
+
+  const sentence = sentences[sentenceIndex].trim();
+  const keyWord = extractMainConcept(sentence);
+
+  return {
+    id,
+    question: `Which statement best describes: "${sentence.substring(0, 60)}..."?`,
+    options: shuffleArray([
+      sentence.substring(0, Math.min(80, sentence.length)),
+      generateAlternativeStatement(sentence),
+      generateAlternativeStatement(sentence),
+      generateAlternativeStatement(sentence)
+    ]),
+    correctAnswer: sentence.substring(0, Math.min(80, sentence.length)),
+    difficulty: 'medium',
+    explanation: sentence
+  };
+}
+
+/**
+ * Generate hard-level questions (analysis and application)
+ */
+function generateHardQuestion(
+  id: string,
+  terms: Array<{ term: string; context: string }>,
+  sentences: string[],
+  index: number,
+  usedSentences: Set<number>
+): MultipleChoiceQuestion | null {
+  if (terms.length < 2) return null;
+
+  const term1 = terms[index % terms.length];
+  const term2 = terms[(index + 1) % terms.length];
+
+  const question = `How do ${term1.term} and ${term2.term} relate in the context of the provided material?`;
+  const correctAnswer = `${term1.term} and ${term2.term} are interconnected concepts that work together`;
+
+  return {
+    id,
+    question,
+    options: shuffleArray([
+      correctAnswer,
+      `${term1.term} is more important than ${term2.term}`,
+      `${term2.term} is unrelated to ${term1.term}`,
+      `They are opposites in every way`
+    ]),
+    correctAnswer,
+    difficulty: 'hard',
+    explanation: `${term1.term}: ${term1.context}. ${term2.term}: ${term2.context}`
+  };
+}
+
+/**
+ * Extract the main concept from a sentence
+ */
+function extractMainConcept(sentence: string): string {
+  const words = sentence.split(/\s+/);
+  return words.find(w => w.match(/^[A-Z]/)) || words[0] || '';
+}
+
+/**
+ * Generate distractors (wrong answers) based on difficulty
+ */
+function generateDistractors(
+  correctTerm: string,
+  count: number,
+  difficulty: DifficultyLevel
+): string[] {
+  const distractors: string[] = [];
+  const commonWrongAnswers = [
+    'A process that defines',
+    'A concept that explains',
+    'An approach that involves',
+    'A principle that represents',
+    'A method that demonstrates'
+  ];
+
+  for (let i = 0; i < count; i++) {
+    if (difficulty === 'easy') {
+      // Easy: obvious distractors
+      distractors.push(
+        correctTerm + ' alternative ' + (i + 1),
+        'Not ' + correctTerm,
+        'Opposite of ' + correctTerm
+      );
+    } else {
+      // Medium/Hard: more plausible distractors
+      distractors.push(
+        commonWrongAnswers[i % commonWrongAnswers.length] + ' ' + correctTerm,
+        correctTerm.toLowerCase() + ' variant',
+        commonWrongAnswers[(i + 1) % commonWrongAnswers.length]
+      );
+    }
+  }
+
+  return distractors.slice(0, count);
+}
+
+/**
+ * Generate alternative statements for medium difficulty
+ */
+function generateAlternativeStatement(original: string): string {
+  const alternatives = [
+    original.substring(0, Math.max(10, original.length - 20)),
+    'A related but different concept',
+    'The opposite of the correct answer',
+    'A common misconception about the topic'
+  ];
+
+  return alternatives[Math.floor(Math.random() * alternatives.length)];
+}
+
+/**
+ * Shuffle array randomly
+ */
+function shuffleArray<T>(array: T[]): T[] {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
 }
