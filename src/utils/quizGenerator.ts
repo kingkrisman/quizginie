@@ -1,7 +1,4 @@
-/**
- * Smart Quiz Generator using local AI simulation
- * Analyzes text content and generates meaningful quiz questions
- */
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 export type DifficultyLevel = 'easy' | 'medium' | 'hard';
 
@@ -19,121 +16,18 @@ export interface MultipleChoiceQuestion {
   explanation: string;
 }
 
-/**
- * Extract key concepts and facts from text
- */
-function extractKeyTerms(text: string): Array<{ term: string; context: string }> {
-  const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
-  const terms: Array<{ term: string; context: string }> = [];
-
-  // Find capitalized terms and important phrases
-  const termRegex = /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/g;
-  
-  sentences.forEach(sentence => {
-    const matches = sentence.match(termRegex) || [];
-    matches.forEach(match => {
-      if (match.length > 2) {
-        terms.push({
-          term: match.trim(),
-          context: sentence.trim()
-        });
-      }
-    });
-  });
-
-  return terms.slice(0, 10); // Limit to top 10 terms
-}
-
-/**
- * Generate questions based on extracted terms and content
- */
-function generateQuestionsFromTerms(
-  text: string,
-  terms: Array<{ term: string; context: string }>
-): GeneratedQuestion[] {
-  const questions: GeneratedQuestion[] = [];
-  const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
-
-  // Question type 1: Definition questions
-  terms.slice(0, 3).forEach(({ term, context }) => {
-    questions.push({
-      question: `What is ${term}?`,
-      answer: context.includes(term) 
-        ? context.trim()
-        : `${term} is a key concept in the provided material. Based on context: ${context.trim()}`
-    });
-  });
-
-  // Question type 2: Relationship questions
-  if (sentences.length > 2) {
-    const randomSentences = sentences.sort(() => Math.random() - 0.5).slice(0, 2);
-    randomSentences.forEach((sentence, idx) => {
-      questions.push({
-        question: `Explain the significance of: ${sentence.trim().substring(0, 50)}...?`,
-        answer: sentence.trim()
-      });
-    });
+const getApiKey = (): string => {
+  const key = import.meta.env.VITE_GEMINI_API_KEY;
+  if (!key) {
+    throw new Error('VITE_GEMINI_API_KEY environment variable is not set');
   }
+  return key;
+};
 
-  // Question type 3: Main concept question
-  if (sentences.length > 0) {
-    const mainContext = sentences.slice(0, Math.min(3, sentences.length)).join('. ');
-    questions.push({
-      question: "What are the main concepts discussed?",
-      answer: mainContext.length > 200 
-        ? mainContext.substring(0, 200) + "..."
-        : mainContext
-    });
-  }
+const initializeGemini = () => {
+  return new GoogleGenerativeAI(getApiKey());
+};
 
-  // Question type 4: Application questions
-  if (terms.length > 1) {
-    const term1 = terms[0].term;
-    const term2 = terms[1].term;
-    questions.push({
-      question: `How do ${term1} and ${term2} relate to each other?`,
-      answer: `Based on the provided material, ${term1} and ${term2} are interconnected concepts. ${sentences[0] || 'They work together to form a comprehensive understanding of the topic.'}`
-    });
-  }
-
-  // Question type 5: Summary question
-  const wordCount = text.split(/\s+/).length;
-  questions.push({
-    question: "What is the key takeaway from this material?",
-    answer: wordCount > 100
-      ? `The material covers ${terms.length} main concepts: ${terms.map(t => t.term).join(', ')}. Focus on understanding how these concepts interconnect.`
-      : `The essential point is: ${sentences[0]?.trim() || 'Review the material to understand the core concepts.'}`
-  });
-
-  return questions.filter((q, idx, arr) => arr.findIndex(a => a.question === q.question) === idx).slice(0, 6);
-}
-
-/**
- * Generate quiz from notes
- */
-export async function generateQuizFromNotes(notes: string): Promise<GeneratedQuestion[]> {
-  if (!notes.trim()) {
-    return [];
-  }
-
-  // Simulate API processing delay
-  await new Promise(resolve => setTimeout(resolve, 1500));
-
-  // Normalize text
-  const cleanText = notes.trim().replace(/\s+/g, ' ');
-  
-  // Extract key terms
-  const terms = extractKeyTerms(cleanText);
-  
-  // Generate questions
-  const questions = generateQuestionsFromTerms(cleanText, terms);
-
-  return questions;
-}
-
-/**
- * Extract text from PDF file
- */
 export async function extractTextFromPDF(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -141,13 +35,11 @@ export async function extractTextFromPDF(file: File): Promise<string> {
     reader.onload = async (e) => {
       try {
         const arrayBuffer = e.target?.result as ArrayBuffer;
-
-        // Extract text using simple byte-by-byte parsing
-        const text = extractPDFText(arrayBuffer);
+        const text = await extractPDFTextWithGemini(arrayBuffer, file.name);
         resolve(text);
       } catch (error) {
         console.error('PDF extraction error:', error);
-        reject(new Error('Failed to extract text from PDF'));
+        reject(new Error('Failed to extract text from PDF. Please ensure it contains readable text.'));
       }
     };
 
@@ -159,84 +51,91 @@ export async function extractTextFromPDF(file: File): Promise<string> {
   });
 }
 
-/**
- * Simple PDF text extraction - extracts all readable ASCII text
- * Works with text-based PDFs; scanned PDFs won't work without OCR
- */
-function extractPDFText(arrayBuffer: ArrayBuffer): string {
-  try {
-    const uint8Array = new Uint8Array(arrayBuffer);
-    let text = '';
+async function extractPDFTextWithGemini(arrayBuffer: ArrayBuffer, fileName: string): Promise<string> {
+  const uint8Array = new Uint8Array(arrayBuffer);
+  const base64String = btoa(String.fromCharCode.apply(null, Array.from(uint8Array)));
 
-    // Extract all printable ASCII characters from the PDF
-    for (let i = 0; i < uint8Array.length; i++) {
-      const byte = uint8Array[i];
+  const genAI = initializeGemini();
+  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
-      // Keep printable ASCII characters and whitespace
-      if ((byte >= 32 && byte <= 126) || byte === 10 || byte === 13 || byte === 9) {
-        if (byte === 10 || byte === 13) {
-          // Normalize line breaks
-          if (!text.endsWith('\n')) {
-            text += '\n';
-          }
-        } else if (byte === 9) {
-          text += ' ';
-        } else {
-          text += String.fromCharCode(byte);
-        }
-      }
-    }
+  const prompt = `You are a PDF text extraction expert. Extract all readable text from this PDF file while preserving the logical structure and meaning. 
+  
+  For text-based PDFs: Extract all text content.
+  For image-heavy PDFs: Extract any visible text you can read.
+  For scanned documents: Use OCR-like capabilities to extract readable text.
+  
+  Clean up the extracted text by:
+  - Removing PDF metadata and control characters
+  - Preserving paragraphs and sections
+  - Keeping important formatting context (titles, lists, etc.)
+  - Fixing any obvious OCR errors
+  
+  Return ONLY the cleaned text content, nothing else.`;
 
-    // Clean up the text
-    text = text
-      // Remove multiple spaces
-      .replace(/[ \t]+/g, ' ')
-      // Remove multiple line breaks
-      .replace(/\n\n+/g, '\n')
-      // Remove PDF metadata and objects
-      .split('\n')
-      .filter(line => {
-        // Filter out PDF technical lines
-        const trimmed = line.trim();
-        if (trimmed.length === 0) return false;
-        if (trimmed.startsWith('%%')) return false; // PDF comments
-        if (trimmed.startsWith('/')) return false; // PDF dictionary entries
-        if (trimmed.match(/^\d+\s+\d+\s+obj/)) return false; // Object declarations
-        if (trimmed === 'stream' || trimmed === 'endstream' || trimmed === 'endobj') return false;
-        return true;
-      })
-      .map(line => line.trim())
-      .join(' ')
-      .trim();
+  const response = await model.generateContent([
+    {
+      inlineData: {
+        mimeType: 'application/pdf',
+        data: base64String,
+      },
+    },
+    prompt,
+  ]);
 
-    // Final cleanup: remove leftover special chars but keep basic punctuation
-    text = text
-      .replace(/[^\w\s.!?:;,\-()'"]/g, ' ')
-      .replace(/[ ]+/g, ' ')
-      .trim();
+  const text = response.response.text();
 
-    if (text.length < 20) {
-      throw new Error('Insufficient text extracted');
-    }
-
-    return text;
-  } catch (error) {
-    console.error('PDF text extraction failed:', error);
-    throw new Error('Could not extract text from PDF. Please ensure the PDF contains readable text.');
+  if (!text || text.length < 20) {
+    throw new Error('Insufficient text extracted from PDF');
   }
+
+  return text.trim();
 }
 
-/**
- * Generate quiz from PDF file
- */
+export async function generateQuizFromNotes(notes: string): Promise<GeneratedQuestion[]> {
+  if (!notes.trim()) {
+    return [];
+  }
+
+  const genAI = initializeGemini();
+  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+
+  const prompt = `You are an expert educator. Create 6 diverse and high-quality quiz questions from the provided notes.
+  
+  Return a JSON array with exactly this structure (no markdown, just raw JSON):
+  [
+    {
+      "question": "question text",
+      "answer": "detailed answer"
+    }
+  ]
+  
+  Requirements:
+  - Create a mix of question types: definitions, conceptual understanding, application, analysis, synthesis, and recall
+  - Each question should test deeper understanding, not just memorization
+  - Answers should be comprehensive and educational
+  - Questions should progressively increase in complexity
+  - Focus on the most important concepts in the material
+  
+  Notes to create questions from:
+  ${notes}`;
+
+  const response = await model.generateContent(prompt);
+  const responseText = response.response.text();
+
+  const jsonMatch = responseText.match(/\[[\s\S]*\]/);
+  if (!jsonMatch) {
+    throw new Error('Failed to parse quiz questions from AI response');
+  }
+
+  const questions: GeneratedQuestion[] = JSON.parse(jsonMatch[0]);
+  return questions.slice(0, 6);
+}
+
 export async function generateQuizFromPDF(file: File): Promise<GeneratedQuestion[]> {
   const text = await extractTextFromPDF(file);
   return generateQuizFromNotes(text);
 }
 
-/**
- * Generate multiple-choice exam questions from text
- */
 export async function generateExamQuestions(
   notes: string,
   numQuestions: number = 5,
@@ -246,199 +145,59 @@ export async function generateExamQuestions(
     return [];
   }
 
-  await new Promise(resolve => setTimeout(resolve, 1200));
+  const genAI = initializeGemini();
+  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
-  const cleanText = notes.trim().replace(/\s+/g, ' ');
-  const sentences = cleanText.split(/[.!?]+/).filter(s => s.trim().length > 0);
-  const terms = extractKeyTerms(cleanText);
+  const difficultyPrompt = {
+    easy: 'factual recall and basic definitions. Options should have one obvious correct answer.',
+    medium: 'conceptual understanding and simple application. Options should be plausible but distinguishable with study.',
+    hard: 'critical thinking, analysis, and application. Options should be similar and require deep understanding to distinguish.'
+  };
 
-  const questions: MultipleChoiceQuestion[] = [];
-  const usedSentences = new Set<number>();
-
-  for (let i = 0; i < numQuestions && i < terms.length + sentences.length; i++) {
-    const questionId = `q${i + 1}`;
-
-    // Vary question types based on difficulty
-    let question: MultipleChoiceQuestion | null = null;
-
-    if (difficulty === 'easy') {
-      question = generateEasyQuestion(questionId, terms, sentences, i, usedSentences);
-    } else if (difficulty === 'medium') {
-      question = generateMediumQuestion(questionId, terms, sentences, i, usedSentences);
-    } else {
-      question = generateHardQuestion(questionId, terms, sentences, i, usedSentences);
+  const prompt = `You are an expert exam creator. Generate exactly ${numQuestions} multiple-choice exam questions at ${difficulty} difficulty level.
+  
+  Return a JSON array with this exact structure (no markdown, just raw JSON):
+  [
+    {
+      "question": "question text",
+      "options": ["option1", "option2", "option3", "option4"],
+      "correctAnswer": "the correct option text",
+      "explanation": "detailed explanation of why this is correct and why others are wrong"
     }
+  ]
+  
+  Requirements for ${difficulty} difficulty:
+  - ${difficultyPrompt[difficulty]}
+  - Create varied question types: multiple choice with single answer
+  - Ensure each option is a complete, grammatically correct statement
+  - Options should be roughly the same length
+  - Correct answer should not be always in the same position
+  - Each question should test a different concept or skill
+  - Explanations should be educational and help students learn
+  
+  Material to create questions from:
+  ${notes}`;
 
-    if (question) {
-      questions.push(question);
-    }
+  const response = await model.generateContent(prompt);
+  const responseText = response.response.text();
+
+  const jsonMatch = responseText.match(/\[[\s\S]*\]/);
+  if (!jsonMatch) {
+    throw new Error('Failed to parse exam questions from AI response');
   }
+
+  const questionsData = JSON.parse(jsonMatch[0]);
+  
+  const questions: MultipleChoiceQuestion[] = questionsData.map(
+    (q: any, idx: number) => ({
+      id: `q${idx + 1}`,
+      question: q.question,
+      options: q.options,
+      correctAnswer: q.correctAnswer,
+      difficulty: difficulty,
+      explanation: q.explanation,
+    })
+  );
 
   return questions.slice(0, numQuestions);
-}
-
-/**
- * Generate easy-level questions (definition-based)
- */
-function generateEasyQuestion(
-  id: string,
-  terms: Array<{ term: string; context: string }>,
-  sentences: string[],
-  index: number,
-  usedSentences: Set<number>
-): MultipleChoiceQuestion | null {
-  if (index >= terms.length) return null;
-
-  const { term, context } = terms[index];
-  const distractors = generateDistractors(term, 3, 'easy');
-
-  return {
-    id,
-    question: `What is ${term}?`,
-    options: shuffleArray([term, ...distractors]),
-    correctAnswer: term,
-    difficulty: 'easy',
-    explanation: context
-  };
-}
-
-/**
- * Generate medium-level questions (concept understanding)
- */
-function generateMediumQuestion(
-  id: string,
-  terms: Array<{ term: string; context: string }>,
-  sentences: string[],
-  index: number,
-  usedSentences: Set<number>
-): MultipleChoiceQuestion | null {
-  if (sentences.length === 0) return null;
-
-  let sentenceIndex = Math.floor(Math.random() * sentences.length);
-  while (usedSentences.has(sentenceIndex) && usedSentences.size < sentences.length) {
-    sentenceIndex = Math.floor(Math.random() * sentences.length);
-  }
-  usedSentences.add(sentenceIndex);
-
-  const sentence = sentences[sentenceIndex].trim();
-  const keyWord = extractMainConcept(sentence);
-
-  return {
-    id,
-    question: `Which statement best describes: "${sentence.substring(0, 60)}..."?`,
-    options: shuffleArray([
-      sentence.substring(0, Math.min(80, sentence.length)),
-      generateAlternativeStatement(sentence),
-      generateAlternativeStatement(sentence),
-      generateAlternativeStatement(sentence)
-    ]),
-    correctAnswer: sentence.substring(0, Math.min(80, sentence.length)),
-    difficulty: 'medium',
-    explanation: sentence
-  };
-}
-
-/**
- * Generate hard-level questions (analysis and application)
- */
-function generateHardQuestion(
-  id: string,
-  terms: Array<{ term: string; context: string }>,
-  sentences: string[],
-  index: number,
-  usedSentences: Set<number>
-): MultipleChoiceQuestion | null {
-  if (terms.length < 2) return null;
-
-  const term1 = terms[index % terms.length];
-  const term2 = terms[(index + 1) % terms.length];
-
-  const question = `How do ${term1.term} and ${term2.term} relate in the context of the provided material?`;
-  const correctAnswer = `${term1.term} and ${term2.term} are interconnected concepts that work together`;
-
-  return {
-    id,
-    question,
-    options: shuffleArray([
-      correctAnswer,
-      `${term1.term} is more important than ${term2.term}`,
-      `${term2.term} is unrelated to ${term1.term}`,
-      `They are opposites in every way`
-    ]),
-    correctAnswer,
-    difficulty: 'hard',
-    explanation: `${term1.term}: ${term1.context}. ${term2.term}: ${term2.context}`
-  };
-}
-
-/**
- * Extract the main concept from a sentence
- */
-function extractMainConcept(sentence: string): string {
-  const words = sentence.split(/\s+/);
-  return words.find(w => w.match(/^[A-Z]/)) || words[0] || '';
-}
-
-/**
- * Generate distractors (wrong answers) based on difficulty
- */
-function generateDistractors(
-  correctTerm: string,
-  count: number,
-  difficulty: DifficultyLevel
-): string[] {
-  const distractors: string[] = [];
-  const commonWrongAnswers = [
-    'A process that defines',
-    'A concept that explains',
-    'An approach that involves',
-    'A principle that represents',
-    'A method that demonstrates'
-  ];
-
-  for (let i = 0; i < count; i++) {
-    if (difficulty === 'easy') {
-      // Easy: obvious distractors
-      distractors.push(
-        correctTerm + ' alternative ' + (i + 1),
-        'Not ' + correctTerm,
-        'Opposite of ' + correctTerm
-      );
-    } else {
-      // Medium/Hard: more plausible distractors
-      distractors.push(
-        commonWrongAnswers[i % commonWrongAnswers.length] + ' ' + correctTerm,
-        correctTerm.toLowerCase() + ' variant',
-        commonWrongAnswers[(i + 1) % commonWrongAnswers.length]
-      );
-    }
-  }
-
-  return distractors.slice(0, count);
-}
-
-/**
- * Generate alternative statements for medium difficulty
- */
-function generateAlternativeStatement(original: string): string {
-  const alternatives = [
-    original.substring(0, Math.max(10, original.length - 20)),
-    'A related but different concept',
-    'The opposite of the correct answer',
-    'A common misconception about the topic'
-  ];
-
-  return alternatives[Math.floor(Math.random() * alternatives.length)];
-}
-
-/**
- * Shuffle array randomly
- */
-function shuffleArray<T>(array: T[]): T[] {
-  const shuffled = [...array];
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-  }
-  return shuffled;
 }
