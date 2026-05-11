@@ -53,24 +53,21 @@ export async function extractTextFromPDF(file: File): Promise<string> {
 
 async function extractPDFTextWithGemini(arrayBuffer: ArrayBuffer, fileName: string): Promise<string> {
   const uint8Array = new Uint8Array(arrayBuffer);
-  const base64String = btoa(String.fromCharCode.apply(null, Array.from(uint8Array)));
+
+  let base64String = '';
+  const chunkSize = 8192;
+
+  for (let i = 0; i < uint8Array.length; i += chunkSize) {
+    const chunk = uint8Array.slice(i, i + chunkSize);
+    base64String += String.fromCharCode.apply(null, Array.from(chunk));
+  }
+
+  base64String = btoa(base64String);
 
   const genAI = initializeGemini();
   const model = genAI.getGenerativeModel({ model: 'gemini-pro-vision' });
 
-  const prompt = `You are a PDF text extraction expert. Extract all readable text from this PDF file while preserving the logical structure and meaning. 
-  
-  For text-based PDFs: Extract all text content.
-  For image-heavy PDFs: Extract any visible text you can read.
-  For scanned documents: Use OCR-like capabilities to extract readable text.
-  
-  Clean up the extracted text by:
-  - Removing PDF metadata and control characters
-  - Preserving paragraphs and sections
-  - Keeping important formatting context (titles, lists, etc.)
-  - Fixing any obvious OCR errors
-  
-  Return ONLY the cleaned text content, nothing else.`;
+  const prompt = `Extract all readable text from this PDF. Return ONLY the clean text content without any formatting or metadata.`;
 
   const response = await model.generateContent([
     {
