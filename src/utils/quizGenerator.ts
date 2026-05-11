@@ -1,8 +1,3 @@
-/**
- * Smart Quiz Generator using local AI simulation
- * Analyzes text content and generates meaningful quiz questions
- */
-
 export type DifficultyLevel = 'easy' | 'medium' | 'hard';
 
 export interface GeneratedQuestion {
@@ -19,14 +14,10 @@ export interface MultipleChoiceQuestion {
   explanation: string;
 }
 
-/**
- * Extract key concepts and facts from text
- */
 function extractKeyTerms(text: string): Array<{ term: string; context: string }> {
   const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
   const terms: Array<{ term: string; context: string }> = [];
 
-  // Find capitalized terms and important phrases
   const termRegex = /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/g;
   
   sentences.forEach(sentence => {
@@ -41,12 +32,9 @@ function extractKeyTerms(text: string): Array<{ term: string; context: string }>
     });
   });
 
-  return terms.slice(0, 10); // Limit to top 10 terms
+  return terms.slice(0, 15);
 }
 
-/**
- * Generate questions based on extracted terms and content
- */
 function generateQuestionsFromTerms(
   text: string,
   terms: Array<{ term: string; context: string }>
@@ -54,7 +42,6 @@ function generateQuestionsFromTerms(
   const questions: GeneratedQuestion[] = [];
   const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
 
-  // Question type 1: Definition questions
   terms.slice(0, 3).forEach(({ term, context }) => {
     questions.push({
       question: `What is ${term}?`,
@@ -64,18 +51,16 @@ function generateQuestionsFromTerms(
     });
   });
 
-  // Question type 2: Relationship questions
   if (sentences.length > 2) {
     const randomSentences = sentences.sort(() => Math.random() - 0.5).slice(0, 2);
-    randomSentences.forEach((sentence, idx) => {
+    randomSentences.forEach((sentence) => {
       questions.push({
-        question: `Explain the significance of: ${sentence.trim().substring(0, 50)}...?`,
+        question: `Explain: ${sentence.trim().substring(0, 60)}...?`,
         answer: sentence.trim()
       });
     });
   }
 
-  // Question type 3: Main concept question
   if (sentences.length > 0) {
     const mainContext = sentences.slice(0, Math.min(3, sentences.length)).join('. ');
     questions.push({
@@ -86,54 +71,40 @@ function generateQuestionsFromTerms(
     });
   }
 
-  // Question type 4: Application questions
   if (terms.length > 1) {
     const term1 = terms[0].term;
     const term2 = terms[1].term;
     questions.push({
-      question: `How do ${term1} and ${term2} relate to each other?`,
-      answer: `Based on the provided material, ${term1} and ${term2} are interconnected concepts. ${sentences[0] || 'They work together to form a comprehensive understanding of the topic.'}`
+      question: `How do ${term1} and ${term2} relate?`,
+      answer: `${term1} and ${term2} are interconnected concepts discussed in the material.`
     });
   }
 
-  // Question type 5: Summary question
   const wordCount = text.split(/\s+/).length;
   questions.push({
-    question: "What is the key takeaway from this material?",
+    question: "What is the key takeaway?",
     answer: wordCount > 100
-      ? `The material covers ${terms.length} main concepts: ${terms.map(t => t.term).join(', ')}. Focus on understanding how these concepts interconnect.`
-      : `The essential point is: ${sentences[0]?.trim() || 'Review the material to understand the core concepts.'}`
+      ? `The material covers ${terms.length} main concepts: ${terms.map(t => t.term).join(', ')}.`
+      : `The essential point is: ${sentences[0]?.trim() || 'Review the core concepts.'}`
   });
 
   return questions.filter((q, idx, arr) => arr.findIndex(a => a.question === q.question) === idx).slice(0, 6);
 }
 
-/**
- * Generate quiz from notes
- */
 export async function generateQuizFromNotes(notes: string): Promise<GeneratedQuestion[]> {
   if (!notes.trim()) {
     return [];
   }
 
-  // Simulate API processing delay
-  await new Promise(resolve => setTimeout(resolve, 1500));
+  await new Promise(resolve => setTimeout(resolve, 800));
 
-  // Normalize text
   const cleanText = notes.trim().replace(/\s+/g, ' ');
-  
-  // Extract key terms
   const terms = extractKeyTerms(cleanText);
-  
-  // Generate questions
   const questions = generateQuestionsFromTerms(cleanText, terms);
 
   return questions;
 }
 
-/**
- * Extract text from PDF file
- */
 export async function extractTextFromPDF(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -141,13 +112,11 @@ export async function extractTextFromPDF(file: File): Promise<string> {
     reader.onload = async (e) => {
       try {
         const arrayBuffer = e.target?.result as ArrayBuffer;
-
-        // Extract text using simple byte-by-byte parsing
-        const text = extractPDFText(arrayBuffer);
+        const text = extractPDFTextLocally(arrayBuffer);
         resolve(text);
       } catch (error) {
         console.error('PDF extraction error:', error);
-        reject(new Error('Failed to extract text from PDF'));
+        reject(new Error('Failed to extract text from PDF. Please ensure it contains readable text.'));
       }
     };
 
@@ -159,23 +128,15 @@ export async function extractTextFromPDF(file: File): Promise<string> {
   });
 }
 
-/**
- * Simple PDF text extraction - extracts all readable ASCII text
- * Works with text-based PDFs; scanned PDFs won't work without OCR
- */
-function extractPDFText(arrayBuffer: ArrayBuffer): string {
+function extractPDFTextLocally(arrayBuffer: ArrayBuffer): string {
   try {
     const uint8Array = new Uint8Array(arrayBuffer);
     let text = '';
 
-    // Extract all printable ASCII characters from the PDF
     for (let i = 0; i < uint8Array.length; i++) {
       const byte = uint8Array[i];
-
-      // Keep printable ASCII characters and whitespace
       if ((byte >= 32 && byte <= 126) || byte === 10 || byte === 13 || byte === 9) {
         if (byte === 10 || byte === 13) {
-          // Normalize line breaks
           if (!text.endsWith('\n')) {
             text += '\n';
           }
@@ -187,21 +148,16 @@ function extractPDFText(arrayBuffer: ArrayBuffer): string {
       }
     }
 
-    // Clean up the text
     text = text
-      // Remove multiple spaces
       .replace(/[ \t]+/g, ' ')
-      // Remove multiple line breaks
       .replace(/\n\n+/g, '\n')
-      // Remove PDF metadata and objects
       .split('\n')
       .filter(line => {
-        // Filter out PDF technical lines
         const trimmed = line.trim();
         if (trimmed.length === 0) return false;
-        if (trimmed.startsWith('%%')) return false; // PDF comments
-        if (trimmed.startsWith('/')) return false; // PDF dictionary entries
-        if (trimmed.match(/^\d+\s+\d+\s+obj/)) return false; // Object declarations
+        if (trimmed.startsWith('%%')) return false;
+        if (trimmed.startsWith('/')) return false;
+        if (trimmed.match(/^\d+\s+\d+\s+obj/)) return false;
         if (trimmed === 'stream' || trimmed === 'endstream' || trimmed === 'endobj') return false;
         return true;
       })
@@ -209,7 +165,6 @@ function extractPDFText(arrayBuffer: ArrayBuffer): string {
       .join(' ')
       .trim();
 
-    // Final cleanup: remove leftover special chars but keep basic punctuation
     text = text
       .replace(/[^\w\s.!?:;,\-()'"]/g, ' ')
       .replace(/[ ]+/g, ' ')
@@ -226,17 +181,11 @@ function extractPDFText(arrayBuffer: ArrayBuffer): string {
   }
 }
 
-/**
- * Generate quiz from PDF file
- */
 export async function generateQuizFromPDF(file: File): Promise<GeneratedQuestion[]> {
   const text = await extractTextFromPDF(file);
   return generateQuizFromNotes(text);
 }
 
-/**
- * Generate multiple-choice exam questions from text
- */
 export async function generateExamQuestions(
   notes: string,
   numQuestions: number = 5,
@@ -246,7 +195,7 @@ export async function generateExamQuestions(
     return [];
   }
 
-  await new Promise(resolve => setTimeout(resolve, 1200));
+  await new Promise(resolve => setTimeout(resolve, 1000));
 
   const cleanText = notes.trim().replace(/\s+/g, ' ');
   const sentences = cleanText.split(/[.!?]+/).filter(s => s.trim().length > 0);
@@ -257,8 +206,6 @@ export async function generateExamQuestions(
 
   for (let i = 0; i < numQuestions && i < terms.length + sentences.length; i++) {
     const questionId = `q${i + 1}`;
-
-    // Vary question types based on difficulty
     let question: MultipleChoiceQuestion | null = null;
 
     if (difficulty === 'easy') {
@@ -277,9 +224,6 @@ export async function generateExamQuestions(
   return questions.slice(0, numQuestions);
 }
 
-/**
- * Generate easy-level questions (definition-based)
- */
 function generateEasyQuestion(
   id: string,
   terms: Array<{ term: string; context: string }>,
@@ -302,9 +246,6 @@ function generateEasyQuestion(
   };
 }
 
-/**
- * Generate medium-level questions (concept understanding)
- */
 function generateMediumQuestion(
   id: string,
   terms: Array<{ term: string; context: string }>,
@@ -321,16 +262,15 @@ function generateMediumQuestion(
   usedSentences.add(sentenceIndex);
 
   const sentence = sentences[sentenceIndex].trim();
-  const keyWord = extractMainConcept(sentence);
 
   return {
     id,
     question: `Which statement best describes: "${sentence.substring(0, 60)}..."?`,
     options: shuffleArray([
       sentence.substring(0, Math.min(80, sentence.length)),
-      generateAlternativeStatement(sentence),
-      generateAlternativeStatement(sentence),
-      generateAlternativeStatement(sentence)
+      "A different concept not covered in material",
+      "The opposite of what was explained",
+      "A related but distinct topic"
     ]),
     correctAnswer: sentence.substring(0, Math.min(80, sentence.length)),
     difficulty: 'medium',
@@ -338,9 +278,6 @@ function generateMediumQuestion(
   };
 }
 
-/**
- * Generate hard-level questions (analysis and application)
- */
 function generateHardQuestion(
   id: string,
   terms: Array<{ term: string; context: string }>,
@@ -371,17 +308,6 @@ function generateHardQuestion(
   };
 }
 
-/**
- * Extract the main concept from a sentence
- */
-function extractMainConcept(sentence: string): string {
-  const words = sentence.split(/\s+/);
-  return words.find(w => w.match(/^[A-Z]/)) || words[0] || '';
-}
-
-/**
- * Generate distractors (wrong answers) based on difficulty
- */
 function generateDistractors(
   correctTerm: string,
   count: number,
@@ -398,14 +324,12 @@ function generateDistractors(
 
   for (let i = 0; i < count; i++) {
     if (difficulty === 'easy') {
-      // Easy: obvious distractors
       distractors.push(
-        correctTerm + ' alternative ' + (i + 1),
+        correctTerm + ' alternative',
         'Not ' + correctTerm,
         'Opposite of ' + correctTerm
       );
     } else {
-      // Medium/Hard: more plausible distractors
       distractors.push(
         commonWrongAnswers[i % commonWrongAnswers.length] + ' ' + correctTerm,
         correctTerm.toLowerCase() + ' variant',
@@ -417,23 +341,6 @@ function generateDistractors(
   return distractors.slice(0, count);
 }
 
-/**
- * Generate alternative statements for medium difficulty
- */
-function generateAlternativeStatement(original: string): string {
-  const alternatives = [
-    original.substring(0, Math.max(10, original.length - 20)),
-    'A related but different concept',
-    'The opposite of the correct answer',
-    'A common misconception about the topic'
-  ];
-
-  return alternatives[Math.floor(Math.random() * alternatives.length)];
-}
-
-/**
- * Shuffle array randomly
- */
 function shuffleArray<T>(array: T[]): T[] {
   const shuffled = [...array];
   for (let i = shuffled.length - 1; i > 0; i--) {
