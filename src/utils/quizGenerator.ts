@@ -65,7 +65,7 @@ async function extractPDFTextWithGemini(arrayBuffer: ArrayBuffer, fileName: stri
   base64String = btoa(base64String);
 
   const genAI = initializeGemini();
-  const model = genAI.getGenerativeModel({ model: 'gemini-pro-vision' });
+  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
 
   const prompt = `Extract all readable text from this PDF. Return ONLY the clean text content without any formatting or metadata.`;
 
@@ -94,7 +94,7 @@ export async function generateQuizFromNotes(notes: string): Promise<GeneratedQue
   }
 
   const genAI = initializeGemini();
-  const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
 
   const prompt = `You are an expert educator. Create 6 diverse and high-quality quiz questions from the provided notes.
   
@@ -143,7 +143,7 @@ export async function generateExamQuestions(
   }
 
   const genAI = initializeGemini();
-  const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash-latest' });
 
   const difficultyPrompt = {
     easy: 'factual recall and basic definitions. Options should have one obvious correct answer.',
